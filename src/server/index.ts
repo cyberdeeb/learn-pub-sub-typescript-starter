@@ -3,6 +3,7 @@ import { ExchangePerilDirect } from '../internal/routing/routing.js';
 import { PauseKey } from '../internal/routing/routing.js';
 import type { PlayingState } from '../internal/gamelogic/gamestate.js';
 import { publishJSON } from '../internal/pubsub/publishJSON.js';
+import { getInput, printServerHelp } from '../internal/gamelogic/gamelogic.js';
 
 async function main() {
   console.log('Starting Peril server...');
@@ -27,6 +28,40 @@ async function main() {
   const playingState: PlayingState = {
     isPaused: true,
   };
+
+  printServerHelp();
+
+  while (true) {
+    const input = await getInput('Enter command:\n');
+    const command = input[0]?.toLowerCase();
+
+    if (!command) {
+      console.log('No command entered. Please try again.');
+      continue;
+    }
+
+    switch (command) {
+      case 'pause':
+        playingState.isPaused = true;
+        console.log('Game paused.');
+        break;
+      case 'resume':
+        playingState.isPaused = false;
+        console.log('Game resumed.');
+        break;
+      case 'quit':
+        console.log('Quitting server...');
+        await connection.close();
+        process.exit(0);
+      case 'help':
+        printServerHelp();
+        continue;
+      default:
+        console.log(`Unknown command: ${command}`);
+        continue;
+    }
+    break;
+  }
 
   publishJSON(channel, ExchangePerilDirect, PauseKey, playingState);
 }
