@@ -1,9 +1,14 @@
 import amqp from 'amqplib';
-import { ExchangePerilDirect } from '../internal/routing/routing.js';
+import {
+  ExchangePerilDirect,
+  ExchangePerilTopic,
+  GameLogSlug,
+} from '../internal/routing/routing.js';
 import { PauseKey } from '../internal/routing/routing.js';
 import type { PlayingState } from '../internal/gamelogic/gamestate.js';
 import { publishJSON } from '../internal/pubsub/publishJSON.js';
 import { getInput, printServerHelp } from '../internal/gamelogic/gamelogic.js';
+import { declareAndBind, SimpleQueueType } from '../internal/pubsub/queues.js';
 
 async function main() {
   console.log('Starting Peril server...');
@@ -23,6 +28,23 @@ async function main() {
 
   const channel = await connection.createConfirmChannel();
   console.log('Channel created');
+
+  // Declare exchanges
+  await channel.assertExchange(ExchangePerilDirect, 'direct', {
+    durable: true,
+  });
+  await channel.assertExchange(ExchangePerilTopic, 'topic', { durable: true });
+  console.log('Exchanges declared');
+
+  // Declare and bind game_logs queue to peril_topic exchange
+  await declareAndBind(
+    connection,
+    ExchangePerilTopic,
+    'game_logs',
+    `${GameLogSlug}.*`,
+    SimpleQueueType.Durable
+  );
+  console.log('Queue game_logs created and bound to peril_topic exchange');
 
   // Create PlayingState object with IsPaused set to true
   const playingState: PlayingState = {
