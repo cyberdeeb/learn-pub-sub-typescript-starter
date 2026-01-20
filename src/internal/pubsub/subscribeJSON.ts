@@ -1,0 +1,40 @@
+import amqp from 'amqplib';
+import { declareAndBind, type SimpleQueueType } from './queues.js';
+
+export async function subscribeJSON<T>(
+  conn: amqp.ChannelModel,
+  exchange: string,
+  queueName: string,
+  key: string,
+  queueType: SimpleQueueType, // an enum to represent "durable" or "transient"
+  handler: (data: T) => void
+): Promise<void> {
+  // Call declareAndBind to make sure that the given queue exists and is bound to the exchange
+  const [channel, queueResult] = await declareAndBind(
+    conn,
+    exchange,
+    queueName,
+    key,
+    queueType
+  );
+
+  // Use the new ChannelModel to call the consume method
+  await channel.consume(
+    queueResult.queue,
+    (message: amqp.ConsumeMessage | null) => {
+      // If the message is null, simply return
+      if (message === null) {
+        return;
+      }
+
+      // Use JSON.parse to parse the message content
+      const parsedData: T = JSON.parse(message.content.toString());
+
+      // Call the given handler function with the parsed message content
+      handler(parsedData);
+
+      // Acknowledge the message with channel.ack(message) to remove it from the queue
+      channel.ack(message);
+    }
+  );
+}

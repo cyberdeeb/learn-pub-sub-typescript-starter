@@ -66,10 +66,12 @@ async function main() {
       case 'pause':
         playingState.isPaused = true;
         console.log('Game paused.');
+        await publishJSON(channel, ExchangePerilDirect, PauseKey, playingState);
         break;
       case 'resume':
         playingState.isPaused = false;
         console.log('Game resumed.');
+        await publishJSON(channel, ExchangePerilDirect, PauseKey, playingState);
         break;
       case 'quit':
         console.log('Quitting server...');
@@ -82,10 +84,7 @@ async function main() {
         console.log(`Unknown command: ${command}`);
         continue;
     }
-    break;
   }
-
-  publishJSON(channel, ExchangePerilDirect, PauseKey, playingState);
 }
 
 main().catch((err) => {
