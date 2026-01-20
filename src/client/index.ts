@@ -2,10 +2,16 @@ import amqp from 'amqplib';
 import { GameState } from '../internal/gamelogic/gamestate.js';
 import { declareAndBind, SimpleQueueType } from '../internal/pubsub/queues.js';
 import { subscribeJSON } from '../internal/pubsub/subscribeJSON.js';
-import { ExchangePerilDirect, PauseKey } from '../internal/routing/routing.js';
+import { publishJSON } from '../internal/pubsub/publishJSON.js';
+import {
+  ExchangePerilDirect,
+  ExchangePerilTopic,
+  PauseKey,
+  ArmyMovesPrefix,
+} from '../internal/routing/routing.js';
 import { commandSpawn } from '../internal/gamelogic/spawn.js';
 import { commandMove } from '../internal/gamelogic/move.js';
-import { handlerPause } from './handlers.js';
+import { handlerPause, handlerMove } from './handlers.js';
 import {
   clientWelcome,
   commandStatus,
@@ -44,6 +50,9 @@ async function main() {
 
   const gs = new GameState(username);
 
+  // Create a channel for publishing
+  const publishChannel = await conn.createConfirmChannel();
+
   // Subscribe to pause/resume messages
   await subscribeJSON(
     conn,
@@ -54,6 +63,16 @@ async function main() {
     handlerPause(gs)
   );
 
+  // Subscribe to army moves from other players
+  await subscribeJSON(
+    conn,
+    ExchangePerilTopic,
+    `${ArmyMovesPrefix}.${username}`,
+    `${ArmyMovesPrefix}.*`,
+    SimpleQueueType.Transient,
+    handlerMove(gs)
+  );
+
   while (true) {
     const words = await getInput();
     if (words.length === 0) {
@@ -62,7 +81,15 @@ async function main() {
     const command = words[0];
     if (command === 'move') {
       try {
-        commandMove(gs, words);
+        const move = commandMove(gs, words);
+        // Publish the move to other players
+        await publishJSON(
+          publishChannel,
+          ExchangePerilTopic,
+          `${ArmyMovesPrefix}.${username}`,
+          move
+        );
+        console.log('Move published successfully');
       } catch (err) {
         console.log((err as Error).message);
       }
