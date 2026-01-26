@@ -8,7 +8,7 @@ export async function subscribeJSON<T>(
   queueName: string,
   key: string,
   queueType: SimpleQueueType, // an enum to represent "durable" or "transient"
-  handler: (data: T) => ackType
+  handler: (data: T) => Promise<ackType> | ackType
 ): Promise<void> {
   // Call declareAndBind to make sure that the given queue exists and is bound to the exchange
   const [channel, queueResult] = await declareAndBind(
@@ -22,7 +22,7 @@ export async function subscribeJSON<T>(
   // Use the new ChannelModel to call the consume method
   await channel.consume(
     queueResult.queue,
-    (message: amqp.ConsumeMessage | null) => {
+    async (message: amqp.ConsumeMessage | null) => {
       // If the message is null, simply return
       if (message === null) {
         return;
@@ -32,7 +32,7 @@ export async function subscribeJSON<T>(
       const parsedData: T = JSON.parse(message.content.toString());
 
       // Call the given handler function with the parsed message content
-      const ack = handler(parsedData);
+      const ack = await handler(parsedData);
 
       // Acknowledge the message with channel.ack(message) to remove it from the queue
       if (ack === ackType.NackRequeue) {

@@ -8,10 +8,11 @@ import {
   ExchangePerilTopic,
   PauseKey,
   ArmyMovesPrefix,
+  WarRecognitionsPrefix,
 } from '../internal/routing/routing.js';
 import { commandSpawn } from '../internal/gamelogic/spawn.js';
 import { commandMove } from '../internal/gamelogic/move.js';
-import { handlerPause, handlerMove } from './handlers.js';
+import { handlerPause, handlerMove, handlerWar } from './handlers.js';
 import {
   clientWelcome,
   commandStatus,
@@ -70,7 +71,17 @@ async function main() {
     `${ArmyMovesPrefix}.${username}`,
     `${ArmyMovesPrefix}.*`,
     SimpleQueueType.Transient,
-    handlerMove(gs)
+    handlerMove(gs, publishChannel)
+  );
+
+  // Subscribe to war messages from any player
+  await subscribeJSON(
+    conn,
+    ExchangePerilTopic,
+    'war',
+    `${WarRecognitionsPrefix}.*`,
+    SimpleQueueType.Durable,
+    handlerWar(gs)
   );
 
   while (true) {
