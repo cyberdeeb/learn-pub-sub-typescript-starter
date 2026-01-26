@@ -16,6 +16,7 @@ import {
   WarRecognitionsPrefix,
 } from '../internal/routing/routing.js';
 import type { ConfirmChannel } from 'amqplib';
+import { publishGameLog } from './index.js';
 
 export function handlerPause(gs: GameState): (ps: PlayingState) => ackType {
   return (ps: PlayingState) => {
@@ -27,7 +28,7 @@ export function handlerPause(gs: GameState): (ps: PlayingState) => ackType {
 
 export function handlerMove(
   gs: GameState,
-  publishChannel: ConfirmChannel
+  publishChannel: ConfirmChannel,
 ): (move: ArmyMove) => Promise<ackType> {
   return async (move: ArmyMove) => {
     const outcome = handleMove(gs, move);
@@ -46,7 +47,7 @@ export function handlerMove(
           publishChannel,
           ExchangePerilTopic,
           `${WarRecognitionsPrefix}.${username}`,
-          warRecognition
+          warRecognition,
         );
         return ackType.Ack;
       } catch (err) {
@@ -65,10 +66,16 @@ export function handlerMove(
   };
 }
 
-export function handlerWar(gs: GameState): (rw: RecognitionOfWar) => ackType {
-  return (rw: RecognitionOfWar) => {
+export function handlerWar(
+  gs: GameState,
+  publishChannel: ConfirmChannel,
+): (rw: RecognitionOfWar) => Promise<ackType> {
+  return async (rw: RecognitionOfWar) => {
     const warResolution = handleWar(gs, rw);
     process.stdout.write('> ');
+
+    const username = gs.getUsername();
+    let message: string | null = null;
 
     switch (warResolution.result) {
       case WarOutcome.NotInvolved:
@@ -76,14 +83,29 @@ export function handlerWar(gs: GameState): (rw: RecognitionOfWar) => ackType {
       case WarOutcome.NoUnits:
         return ackType.NackDiscard;
       case WarOutcome.OpponentWon:
-        return ackType.Ack;
+        message = `${warResolution.winner} won a war against ${warResolution.loser}`;
+        break;
       case WarOutcome.YouWon:
-        return ackType.Ack;
+        message = `${warResolution.winner} won a war against ${warResolution.loser}`;
+        break;
       case WarOutcome.Draw:
-        return ackType.Ack;
+        message = `A war between ${warResolution.attacker} and ${warResolution.defender} resulted in a draw`;
+        break;
       default:
         console.error('Unknown war outcome, discarding message');
         return ackType.NackDiscard;
     }
+
+    if (message) {
+      try {
+        await publishGameLog(publishChannel, username, message);
+        return ackType.Ack;
+      } catch (err) {
+        console.error('Error publishing game log:', err);
+        return ackType.NackRequeue;
+      }
+    }
+
+    return ackType.Ack;
   };
 }

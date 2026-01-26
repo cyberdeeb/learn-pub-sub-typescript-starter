@@ -2,13 +2,14 @@ import amqp from 'amqplib';
 import { GameState } from '../internal/gamelogic/gamestate.js';
 import { declareAndBind, SimpleQueueType } from '../internal/pubsub/queues.js';
 import { subscribeJSON } from '../internal/pubsub/subscribeJSON.js';
-import { publishJSON } from '../internal/pubsub/publishJSON.js';
+import { publishJSON, publishMsgPack } from '../internal/pubsub/publishJSON.js';
 import {
   ExchangePerilDirect,
   ExchangePerilTopic,
   PauseKey,
   ArmyMovesPrefix,
   WarRecognitionsPrefix,
+  GameLogSlug,
 } from '../internal/routing/routing.js';
 import { commandSpawn } from '../internal/gamelogic/spawn.js';
 import { commandMove } from '../internal/gamelogic/move.js';
@@ -36,7 +37,7 @@ async function main() {
       } finally {
         process.exit(0);
       }
-    })
+    }),
   );
 
   const username = await clientWelcome();
@@ -46,7 +47,7 @@ async function main() {
     ExchangePerilDirect,
     `${PauseKey}.${username}`,
     PauseKey,
-    SimpleQueueType.Transient
+    SimpleQueueType.Transient,
   );
 
   const gs = new GameState(username);
@@ -61,7 +62,7 @@ async function main() {
     `pause.${username}`,
     PauseKey,
     SimpleQueueType.Transient,
-    handlerPause(gs)
+    handlerPause(gs),
   );
 
   // Subscribe to army moves from other players
@@ -71,7 +72,7 @@ async function main() {
     `${ArmyMovesPrefix}.${username}`,
     `${ArmyMovesPrefix}.*`,
     SimpleQueueType.Transient,
-    handlerMove(gs, publishChannel)
+    handlerMove(gs, publishChannel),
   );
 
   // Subscribe to war messages from any player
@@ -81,7 +82,7 @@ async function main() {
     'war',
     `${WarRecognitionsPrefix}.*`,
     SimpleQueueType.Durable,
-    handlerWar(gs)
+    handlerWar(gs, publishChannel),
   );
 
   while (true) {
@@ -98,7 +99,7 @@ async function main() {
           publishChannel,
           ExchangePerilTopic,
           `${ArmyMovesPrefix}.${username}`,
-          move
+          move,
         );
         console.log('Move published successfully');
       } catch (err) {
@@ -126,6 +127,24 @@ async function main() {
   }
 }
 
+export async function publishGameLog(
+  channel: amqp.ConfirmChannel,
+  username: string,
+  message: string,
+): Promise<void> {
+  const gameLog = {
+    username,
+    message,
+    currentTime: new Date(),
+  };
+
+  await publishMsgPack(
+    channel,
+    ExchangePerilTopic,
+    `${GameLogSlug}.${username}`,
+    gameLog,
+  );
+}
 main().catch((err) => {
   console.error('Fatal error:', err);
   process.exit(1);
