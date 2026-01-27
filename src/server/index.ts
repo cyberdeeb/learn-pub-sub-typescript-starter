@@ -7,7 +7,10 @@ import {
   PauseKey,
 } from '../internal/routing/routing.js';
 import { getInput, printServerHelp } from '../internal/gamelogic/gamelogic.js';
-import { declareAndBind, SimpleQueueType } from '../internal/pubsub/queues.js';
+import { SimpleQueueType } from '../internal/pubsub/queues.js';
+import { subscribeMsgPack } from '../internal/pubsub/subscribeJSON.js';
+import { writeLog, type GameLog } from '../internal/gamelogic/logs.js';
+import ackType from '../internal/pubsub/acktype.js';
 
 async function main() {
   const rabbitConnString = 'amqp://guest:guest@localhost:5672/';
@@ -24,17 +27,27 @@ async function main() {
       } finally {
         process.exit(0);
       }
-    })
+    }),
   );
 
   const publishCh = await conn.createConfirmChannel();
 
-  declareAndBind(
+  await subscribeMsgPack<GameLog>(
     conn,
     ExchangePerilTopic,
     GameLogSlug,
     `${GameLogSlug}.*`,
-    SimpleQueueType.Durable
+    SimpleQueueType.Durable,
+    async (log: GameLog) => {
+      try {
+        await writeLog(log);
+        process.stdout.write('> ');
+        return ackType.Ack;
+      } catch (err) {
+        console.error('Error writing game log:', err);
+        return ackType.NackRequeue;
+      }
+    },
   );
 
   printServerHelp();
