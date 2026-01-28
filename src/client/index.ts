@@ -18,6 +18,7 @@ import {
   clientWelcome,
   commandStatus,
   getInput,
+  getMaliciousLog,
   printClientHelp,
   printQuit,
 } from '../internal/gamelogic/gamelogic.js';
@@ -119,7 +120,29 @@ async function main() {
       printQuit();
       process.exit(0);
     } else if (command === 'spam') {
-      console.log('Spamming not allowed yet!');
+      if (!words[1]) {
+        console.log('Usage: spam <number_of_moves>');
+        continue;
+      }
+      const spamCount = parseInt(words[1], 10);
+      if (isNaN(spamCount) || spamCount <= 0) {
+        console.log('Please provide a valid positive number for spam count.');
+        continue;
+      }
+      console.log(`Spamming ${spamCount} moves...`);
+      for (let i = 0; i < spamCount; i++) {
+        const maliciousLog = getMaliciousLog();
+        await publishMsgPack(
+          publishChannel,
+          ExchangePerilTopic,
+          `${GameLogSlug}.${username}`,
+          {
+            username,
+            message: maliciousLog,
+            currentTime: new Date(),
+          },
+        );
+      }
     } else {
       console.log('Unknown command');
       continue;
